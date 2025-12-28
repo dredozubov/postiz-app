@@ -11,6 +11,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { GhostDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/ghost.dto';
 import slugify from 'slugify';
 import { sign } from 'jsonwebtoken';
+import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 
 interface GhostCredentials {
   domain: string;
@@ -139,6 +140,38 @@ export class GhostProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
+  @Tool({ description: 'Get Ghost tags', dataSchema: [] })
+  async tags(token: string): Promise<Array<{ value: string; label: string }>> {
+    try {
+      const credentials = this.parseCredentials(token);
+      const jwtToken = this.generateGhostJWT(credentials.apiKey);
+      const apiUrl = this.getApiUrl(credentials.domain);
+
+      const response = await fetch(`${apiUrl}/tags/?limit=all`, {
+        headers: {
+          Authorization: `Ghost ${jwtToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch Ghost tags:', await response.text());
+        return [];
+      }
+
+      const data = await response.json();
+      return (
+        data.tags?.map((tag: { slug: string; name: string }) => ({
+          value: tag.slug,
+          label: tag.name,
+        })) || []
+      );
+    } catch (err) {
+      console.error('Ghost tags fetch error:', err);
+      return [];
+    }
+  }
+
   private async uploadImage(
     apiUrl: string,
     token: string,
@@ -199,16 +232,23 @@ export class GhostProvider extends SocialAbstract implements SocialProvider {
       }
     }
 
+    // Extract title from first line of message if not provided in settings
+    // This handles cases where frontend doesn't pass Ghost-specific settings
+    const messageLines = firstPost.message.split('\n').filter((l) => l.trim());
+    const extractedTitle =
+      messageLines[0]?.replace(/<[^>]*>/g, '').trim() || 'Untitled';
+    const postTitle = settings?.title || extractedTitle;
+
     const postSlug = settings?.slug
       ? slugify(settings.slug, { lower: true, strict: true, trim: true })
-      : slugify(settings?.title || 'untitled', {
+      : slugify(postTitle, {
           lower: true,
           strict: true,
           trim: true,
         });
 
     const ghostPost: Record<string, any> = {
-      title: settings?.title || 'Untitled',
+      title: postTitle,
       html: firstPost.message,
       slug: postSlug,
       status: settings?.status || 'published',
