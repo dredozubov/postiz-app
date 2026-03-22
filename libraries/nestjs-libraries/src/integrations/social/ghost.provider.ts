@@ -262,7 +262,7 @@ export class GhostProvider extends SocialAbstract implements SocialProvider {
       ghostPost.tags = settings.tags.map((tag) => ({ name: tag }));
     }
 
-    const response = await this.fetch(`${apiUrl}/posts/`, {
+    const response = await this.fetch(`${apiUrl}/posts/?source=html`, {
       method: 'POST',
       headers: {
         Authorization: `Ghost ${token}`,
